@@ -2,7 +2,7 @@
 **/bin/
 **/obj/
 Details.md
-Publish*/
+/Publish/
 TestResults/
 **/TestResults/
 *.trx
