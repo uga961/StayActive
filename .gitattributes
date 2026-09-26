@@ -1,1 +1,1 @@
-Publish/StayActive.exe filter=lfs diff=lfs merge=lfs -text
+Publish/*.exe filter=lfs diff=lfs merge=lfs -text
