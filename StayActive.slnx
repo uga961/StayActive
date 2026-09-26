@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="StayActive.Core.Tests/StayActive.Core.Tests.csproj" />
+  <Project Path="StayActive.Core/StayActive.Core.csproj" />
+  <Project Path="StayActive/StayActive.csproj" />
+</Solution>

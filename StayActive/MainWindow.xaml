@@ -1,0 +1,166 @@
+﻿<Window x:Class="StayActive.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StayActive" Height="790" Width="1060" MinHeight="680" MinWidth="820"
+        Icon="Resources/StayActive.ico" WindowStartupLocation="CenterScreen" Background="#F3F6F3" Foreground="#20312C"
+        FontFamily="Segoe UI" StateChanged="Window_StateChanged" Closing="Window_Closing" SourceInitialized="Window_SourceInitialized">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="#20312C" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#CAD6D0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="MinWidth" Value="90" />
+            <Setter Property="BorderBrush" Value="#B9C9C1" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+        <Grid>
+            <Grid x:Name="AppShell" Margin="32">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="StayActive" FontSize="32" FontWeight="SemiBold" />
+                <TextBlock Text="Good habits. Small breaks. Better work." FontSize="15" Foreground="#60736B" Margin="0,3,0,0" />
+            </StackPanel>
+            <TextBlock x:Name="ClockText" Grid.Column="1" Text="00:00:00" FontSize="22" FontWeight="SemiBold" Foreground="#39768B" VerticalAlignment="Center" Margin="0,0,28,0" ToolTip="Time since StayActive opened" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="PauseButton" Content="Pause all" Click="PauseButton_Click" Margin="0,0,8,0" />
+                <Button Content="Settings" Click="SettingsButton_Click" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <ScrollViewer x:Name="DashboardView" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Border Background="#E1EEE6" BorderBrush="#C8DCCF" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,0,18">
+                        <StackPanel>
+                            <TextBlock x:Name="PauseStatusText" Text="Reminders are running" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock x:Name="PauseDetailText" Text="Pause all reminders any time, including during an exam." FontSize="14" Foreground="#50665C" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <UniformGrid Columns="2">
+                        <Border Background="White" BorderBrush="#D9E2DD" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,10,10">
+                            <StackPanel>
+                                <TextBlock Text="20-20-20 eye break" FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock x:Name="EyeStateText" Text="Enabled" Foreground="#3A765E" Margin="0,10,0,2" />
+                                <TextBlock x:Name="EyeRemainingText" Text="Next break: 20:00" FontSize="16" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="White" BorderBrush="#D9E2DD" BorderThickness="1" CornerRadius="8" Padding="20" Margin="10,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="Water" FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WaterStateText" Text="Enabled" Foreground="#39768B" Margin="0,10,0,2" />
+                                <TextBlock x:Name="WaterRemainingText" Text="Next reminder: 45:00" FontSize="16" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="White" BorderBrush="#D9E2DD" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,10,10,0">
+                            <StackPanel>
+                                <TextBlock Text="Walking break" FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WalkingStateText" Text="Enabled" Foreground="#3A765E" Margin="0,10,0,2" />
+                                <TextBlock x:Name="WalkingRemainingText" Text="Next reminder: 60:00" FontSize="16" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#F7F8F6" BorderBrush="#D9E2DD" BorderThickness="1" CornerRadius="8" Padding="20" Margin="10,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Computer glasses" FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock x:Name="GlassesStatusText" Text="Wear glasses before starting" Foreground="#39768B" Margin="0,10,0,2" />
+                                <TextBlock Text="A manual glasses check is shown whenever StayActive opens. No camera is used." FontSize="14" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="SettingsView" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+                    <TextBlock Text="Settings" FontSize="26" FontWeight="SemiBold" Margin="0,0,0,18" />
+                    <TextBlock Text="Startup and exam mode" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <CheckBox x:Name="StartWithWindowsCheck" Content="Start StayActive with Windows" Margin="0,0,0,9" />
+                    <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to the tray" Margin="0,0,0,9" />
+                    <CheckBox x:Name="StartPausedCheck" Content="Start paused (exam mode)" Margin="0,0,0,18" />
+
+                    <Separator Margin="0,2,0,18" />
+                    <TextBlock Text="Reminders" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+                    <CheckBox x:Name="EyeEnabledCheck" Content="Enable 20-20-20 eye breaks" />
+                    <WrapPanel Margin="24,8,0,14">
+                        <TextBlock Text="Interval (minutes)" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBox x:Name="EyeIntervalBox" Width="90" />
+                        <TextBlock Text="Break duration (seconds)" VerticalAlignment="Center" Margin="24,0,12,0" />
+                        <TextBox x:Name="EyeDurationBox" Width="90" />
+                    </WrapPanel>
+
+                    <CheckBox x:Name="WaterEnabledCheck" Content="Enable water reminder" />
+                    <WrapPanel Margin="24,8,0,14">
+                        <TextBlock Text="Interval (30-120 minutes)" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBox x:Name="WaterIntervalBox" Width="90" />
+                    </WrapPanel>
+
+                    <CheckBox x:Name="WalkingEnabledCheck" Content="Enable walking reminder" />
+                    <WrapPanel Margin="24,8,0,18">
+                        <TextBlock Text="Interval (15-180 minutes)" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBox x:Name="WalkingIntervalBox" Width="90" />
+                        <TextBlock Text="Walk block (2 or 3 minutes)" VerticalAlignment="Center" Margin="24,0,12,0" />
+                        <TextBox x:Name="WalkingDurationBox" Width="90" />
+                    </WrapPanel>
+
+                    <Border Background="#F4EEE2" BorderBrush="#E6D8BB" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,18">
+                        <TextBlock Text="StayActive asks you to confirm your glasses when it opens. All checks are manual; this build does not access the camera." TextWrapping="Wrap" Foreground="#604C2D" />
+                    </Border>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Save settings" Click="SaveSettingsButton_Click" Margin="0,0,8,0" />
+                        <Button Content="Back to dashboard" Click="DashboardButton_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <TextBlock x:Name="FooterStatusText" Grid.Row="2" Text="Runs locally. Camera is off." Foreground="#60736B" FontSize="13" Margin="0,16,0,0" />
+            </Grid>
+            <Grid x:Name="GlassesPromptView" Visibility="Collapsed" Background="#123A35" Panel.ZIndex="5">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="680" Margin="32">
+                    <TextBlock Text="A QUICK START CHECK" FontSize="15" FontWeight="SemiBold" Foreground="#B4DAC7" HorizontalAlignment="Center" />
+                    <TextBlock Text="Put on your computer glasses" FontSize="38" FontWeight="SemiBold" Foreground="White" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
+                    <TextBlock Text="When you're ready, confirm below. StayActive will continue quietly in the tray." FontSize="18" Foreground="#DBE9E2" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
+                    <Canvas Width="240" Height="200" HorizontalAlignment="Center" Margin="0,12,0,0">
+                        <Ellipse Width="142" Height="168" Fill="#E1BE97" Stroke="#F8DEBC" StrokeThickness="3" Canvas.Left="49" Canvas.Top="17" />
+                        <Ellipse Width="8" Height="6" Fill="#474335" Canvas.Left="84" Canvas.Top="86" />
+                        <Ellipse Width="8" Height="6" Fill="#474335" Canvas.Left="147" Canvas.Top="86" />
+                        <Canvas x:Name="GlassesArtwork" Width="240" Height="200">
+                            <Canvas.RenderTransform>
+                                <TranslateTransform x:Name="GlassesDropTransform" Y="-72" />
+                            </Canvas.RenderTransform>
+                            <Rectangle Width="54" Height="34" RadiusX="10" RadiusY="10" Stroke="#1F5D4D" StrokeThickness="5" Fill="Transparent" Canvas.Left="62" Canvas.Top="69" />
+                            <Rectangle Width="54" Height="34" RadiusX="10" RadiusY="10" Stroke="#1F5D4D" StrokeThickness="5" Fill="Transparent" Canvas.Left="123" Canvas.Top="69" />
+                            <Line X1="114" X2="123" Y1="86" Y2="86" Stroke="#1F5D4D" StrokeThickness="5" />
+                            <Line X1="62" X2="45" Y1="79" Y2="72" Stroke="#1F5D4D" StrokeThickness="4" />
+                            <Line X1="184" X2="199" Y1="79" Y2="72" Stroke="#1F5D4D" StrokeThickness="4" />
+                        </Canvas>
+                    </Canvas>
+                    <Button Content="I'm wearing my glasses" FontSize="18" Padding="28,14" MinWidth="250" HorizontalAlignment="Center" Margin="0,12,0,0" Click="ConfirmGlassesButton_Click" />
+                    <TextBlock Text="Exam? Use the StayActive tray menu to pause reminders." FontSize="14" Foreground="#B4DAC7" TextAlignment="Center" Margin="0,22,0,0" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+</Window>
