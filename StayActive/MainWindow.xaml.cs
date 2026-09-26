@@ -1,6 +1,7 @@
 ﻿using StayActive.Core;
 using StayActive.Models;
 using StayActive.Services;
+using Microsoft.Win32;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -26,6 +27,8 @@ public partial class MainWindow : Window
     private bool _glassesCheckSkipped;
     private bool _isExiting;
     private bool _closingReminderForPause;
+    private bool _isLoadingSettings;
+    private long _themeTransitionVersion;
     private const uint SystemCommandClose = 0xF060;
     private const uint MenuByCommand = 0x00000000;
     private const uint MenuGrayed = 0x00000001;
@@ -43,6 +46,8 @@ public partial class MainWindow : Window
         _settingsStore = settingsStore;
         _sessionClock = sessionClock;
         InitializeComponent();
+        ApplyAppearance(_settings.AppearanceMode, animated: false);
+        SystemEvents.UserPreferenceChanged += SystemPreferenceChanged;
 
         var iconResource = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Resources/StayActive.ico"));
         if (iconResource is null)
@@ -289,9 +294,7 @@ public partial class MainWindow : Window
         PauseDetailText.Text = _engine.IsPaused
             ? "Timers are held in place. Resume when it is safe to continue."
             : "Pause all reminders any time, including during an exam.";
-        PauseStatusText.Foreground = _engine.IsPaused
-            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(130, 73, 40))
-            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 96, 68));
+        PauseStatusText.Foreground = (System.Windows.Media.Brush)FindResource(_engine.IsPaused ? "ThemePausedText" : "ThemeGood");
 
         EyeStateText.Text = _settings.EyeBreakEnabled ? "Enabled" : "Disabled";
         WaterStateText.Text = _settings.WaterEnabled ? "Enabled" : "Disabled";
@@ -331,6 +334,10 @@ public partial class MainWindow : Window
 
     private void LoadSettingsIntoControls()
     {
+        _isLoadingSettings = true;
+        SystemAppearanceRadio.IsChecked = _settings.AppearanceMode == "System";
+        LightAppearanceRadio.IsChecked = _settings.AppearanceMode == "Light";
+        DarkAppearanceRadio.IsChecked = _settings.AppearanceMode == "Dark";
         StartWithWindowsCheck.IsChecked = _settings.StartWithWindows;
         StartMinimizedCheck.IsChecked = _settings.StartMinimized;
         StartPausedCheck.IsChecked = _settings.StartPausedForExam;
@@ -342,6 +349,126 @@ public partial class MainWindow : Window
         WalkingEnabledCheck.IsChecked = _settings.WalkingEnabled;
         WalkingIntervalBox.Text = _settings.WalkingIntervalMinutes.ToString(CultureInfo.InvariantCulture);
         WalkingDurationBox.Text = _settings.WalkingDurationMinutes.ToString(CultureInfo.InvariantCulture);
+        _isLoadingSettings = false;
+    }
+
+    private void AppearanceMode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings || sender is not System.Windows.Controls.RadioButton { IsChecked: true, Tag: string mode })
+        {
+            return;
+        }
+
+        _settings.AppearanceMode = mode;
+        ApplyAppearance(mode, animated: true);
+        PersistSettings();
+    }
+
+    private void ApplyAppearance(string mode, bool animated)
+    {
+        var isDark = mode switch
+        {
+            "Dark" => true,
+            "Light" => false,
+            _ => IsSystemDarkMode()
+        };
+
+        if (!animated)
+        {
+            SetThemePalette(isDark);
+            return;
+        }
+
+        var transitionVersion = ++_themeTransitionVersion;
+        AppShell.BeginAnimation(UIElement.OpacityProperty, null);
+        AppShell.Opacity = 1;
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0.84, TimeSpan.FromMilliseconds(110));
+        fadeOut.Completed += (_, _) =>
+        {
+            if (transitionVersion != _themeTransitionVersion)
+            {
+                return;
+            }
+
+            SetThemePalette(isDark);
+            var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0.84, 1, TimeSpan.FromMilliseconds(180));
+            fadeIn.Completed += (_, _) =>
+            {
+                if (transitionVersion == _themeTransitionVersion)
+                {
+                    AppShell.BeginAnimation(UIElement.OpacityProperty, null);
+                    AppShell.Opacity = 1;
+                }
+            };
+            AppShell.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        };
+        AppShell.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+    }
+
+    private void SetThemePalette(bool isDark)
+    {
+        var palette = isDark
+            ? new Dictionary<string, string>
+            {
+                ["ThemeWindowBackground"] = "#1B2421",
+                ["ThemeCardBackground"] = "#26322D",
+                ["ThemeCardMutedBackground"] = "#222D28",
+                ["ThemePrimaryText"] = "#EDF3EF",
+                ["ThemeMutedText"] = "#B0C0B7",
+                ["ThemeBorder"] = "#46574F",
+                ["ThemeAccent"] = "#78C5D1",
+                ["ThemeAccentSurface"] = "#304A49",
+                ["ThemeGood"] = "#8BC9A4",
+                ["ThemeWater"] = "#78C5D1",
+                ["ThemeStatusSurface"] = "#293A32",
+                ["ThemeInfoSurface"] = "#3A3429",
+                ["ThemeInfoText"] = "#F0D6A7",
+                ["ThemePausedText"] = "#F0B98D"
+            }
+            : new Dictionary<string, string>
+            {
+                ["ThemeWindowBackground"] = "#F3F6F3",
+                ["ThemeCardBackground"] = "#FFFFFF",
+                ["ThemeCardMutedBackground"] = "#F7F8F6",
+                ["ThemePrimaryText"] = "#20312C",
+                ["ThemeMutedText"] = "#60736B",
+                ["ThemeBorder"] = "#CAD6D0",
+                ["ThemeAccent"] = "#39768B",
+                ["ThemeAccentSurface"] = "#E1EEE6",
+                ["ThemeGood"] = "#3A765E",
+                ["ThemeWater"] = "#39768B",
+                ["ThemeStatusSurface"] = "#E1EEE6",
+                ["ThemeInfoSurface"] = "#F4EEE2",
+                ["ThemeInfoText"] = "#604C2D",
+                ["ThemePausedText"] = "#824928"
+            };
+
+        foreach (var (key, hexColor) in palette)
+        {
+            var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hexColor);
+            Resources[key] = new System.Windows.Media.SolidColorBrush(color);
+        }
+    }
+
+    private static bool IsSystemDarkMode()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return Convert.ToInt32(key?.GetValue("AppsUseLightTheme", 1), CultureInfo.InvariantCulture) == 0;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            return false;
+        }
+    }
+
+    private void SystemPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
+    {
+        if (_settings.AppearanceMode == "System")
+        {
+            Dispatcher.BeginInvoke(() => ApplyAppearance("System", animated: true));
+        }
     }
 
     private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
@@ -484,6 +611,7 @@ public partial class MainWindow : Window
     {
         _isExiting = true;
         _uiTimer.Stop();
+        SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _trayIconImage.Dispose();

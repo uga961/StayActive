@@ -11,8 +11,11 @@ Implemented reminders:
 - Walking: 60-minute interval and two-minute screen block by default. The interval is configurable, and the block can be set to 2 or 3 minutes. The full-screen reminder cannot be dismissed early through its window; it clears when the countdown ends. Pausing all reminders remains available for exam sessions.
 - Pause all: available in the dashboard and tray menu. The pause state persists across restarts; reminders stay paused until resumed.
 - The dashboard shows elapsed `HH:mm:ss` since launch. Eye, water, and walking countdowns use that same monotonic session clock and show total `MM:ss` remaining.
+- Appearance can follow Windows or be set to Light or Dark in Settings; changes fade smoothly.
 
 Windows startup is optional and off by default. Enable it in Settings to register StayActive for the current Windows user. Startup can be minimized to the tray and configured to start paused for exam sessions. The dashboard and tray also provide a one-click Pause all / Resume all control.
+
+The **Appearance** setting has three options: **System** follows the Windows app-theme preference, while **Light** and **Dark** select a fixed palette. Changes are saved and transition with a brief fade.
 
 ## Start-Up Glasses Check
 
@@ -48,94 +51,9 @@ The intended executable is `publish/StayActive.exe`. This packages the .NET runt
 - Windows startup: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, only when enabled in Settings.
 - No accounts, databases, analytics, network requests, or remote services are used by this application.
 - Preferences are stored locally; reminder deadlines reset together on each app launch. No activity history or camera data is stored.
+- Appearance mode is stored in `%AppData%\StayActive\settings.json`.
 - Water interval range: 30-120 minutes.
 - Walking interval range: 15-180 minutes; full-screen walk block: 2 or 3 minutes.
 - Eye interval range: 5-60 minutes; eye-break duration range: 5-120 seconds.
 
 Disable Start StayActive with Windows in Settings to remove the current-user startup entry. Pause all pauses reminders; Exit stops the current process.
-# StayActive
-
-StayActive is a lightweight Windows desktop reminder app built with WPF and .NET 8. It keeps water, eye-break, and walking reminders independent, can run from the system tray, and stores preferences locally.
-
-## Features
-
-- **Water reminders:** 45-minute default, configurable from 30 to 120 minutes. The reminder resets after confirmation.
-- **20-20-20 eye breaks:** 20-minute interval and 20-second duration by default. Both values are configurable, and reminders can be snoozed for five minutes.
-- **Walking reminders:** 60-minute interval and a two-minute screen block by default. The interval can be set from 15 to 180 minutes, and the block can be set to 2 or 3 minutes. The block ends when its countdown completes.
-- **Pause all:** available from the dashboard and tray menu, with the pause state retained across restarts.
-- **System tray:** open the dashboard, pause or resume reminders, open Settings, create a desktop shortcut, or exit the app.
-- **Startup options:** optionally start with Windows, start minimized to the tray, or start paused for an exam session.
-- **Session clock:** the dashboard shows elapsed `HH:mm:ss`; reminder countdowns show total remaining time as `MM:ss`.
-
-## First Run
-
-On launch, StayActive shows a full-screen glasses reminder. Select **I'm wearing my glasses** to continue; the app then moves to the tray and starts its reminders. This is a manual reminder, not computer vision or a verification system.
-
-To skip the glasses prompt for an exam or scripted launch, use the `--paused` option. Use `--minimized` to start in the tray:
-
-```powershell
-StayActive.exe --paused --minimized
-```
-
-Walking reminders do not use a camera. StayActive does not open the camera, collect images, or process face data.
-
-## Requirements
-
-- Windows 10 or Windows 11
-- .NET 8 SDK when building or running from source
-
-The project targets `net8.0-windows`. The release command below publishes a self-contained `win-x64` build.
-
-## Run From Source
-
-From the repository root on Windows:
-
-```powershell
-dotnet build StayActive.slnx -c Debug
-dotnet test StayActive.slnx -c Debug
-dotnet run --project StayActive/StayActive.csproj
-```
-
-Minimizing the main window hides StayActive in the tray. The window close command is disabled; use the tray menu's **Exit** command to stop the process.
-
-## Publish A Single-File Executable
-
-```powershell
-dotnet publish StayActive/StayActive.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o publish
-```
-
-The output is `publish/StayActive.exe`. It includes the .NET runtime, so the target PC does not need a separate .NET installation. There is no installer. Copy the executable to a stable location before enabling Windows startup because the startup entry points to that path.
-
-Test the published executable on the Windows versions and hardware you intend to support before distributing it. GitHub Releases is the recommended place to publish a verified executable.
-
-## Settings And Privacy
-
-- Settings file: `%AppData%\StayActive\settings.json`
-- Startup registration: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, only when enabled in Settings
-- Water interval: 30-120 minutes
-- Eye-break interval: 5-60 minutes
-- Eye-break duration: 5-120 seconds
-- Walking interval: 15-180 minutes
-- Walking block: 2 or 3 minutes
-
-The app uses no accounts, database, analytics, network requests, remote services, or camera data. Preferences are stored locally. Reminder deadlines are initialized again when the app launches; no activity history is stored.
-
-Disable **Start StayActive with Windows** in Settings to remove the current-user startup entry. **Pause all** pauses reminders, while **Exit** stops the current process.
-
-## Tests
-
-`StayActive.Core.Tests` covers independent reminder deadlines, due-once behavior, completion and reset isolation, pause/resume, disabled timers, interval updates, and snooze isolation.
-
-The test suite does not cover WPF interaction, reminder-window behavior, settings-file persistence, registry startup, shortcut creation, display changes, or Windows sleep/resume. Those areas require interactive Windows verification.
-
-## Project Layout
-
-```text
-StayActive/          WPF application and Windows integration
-StayActive.Core/     Timer and session-clock logic
-StayActive.Core.Tests/  Core unit tests
-```
-
-## License
-
-No license file is currently included. Add a license before accepting external contributions or distributing the project publicly.
