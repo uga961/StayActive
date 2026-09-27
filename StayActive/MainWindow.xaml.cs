@@ -37,8 +37,13 @@ public partial class MainWindow : Window
     private const uint MenuGrayed = 0x00000001;
     private const int WindowMessagePowerBroadcast = 0x0218;
     private const int PowerBroadcastSettingChange = 0x8013;
+    private const int WindowMessageSessionChange = 0x02B1;
+    private const int SessionLockMessage = 0x0007;
+    private const int SessionUnlockMessage = 0x0008;
     private const uint DeviceNotifyWindowHandle = 0x00000000;
+    private const uint NotifyForThisSession = 0;
     private static readonly Guid LidSwitchStateChange = new("BA3E0F4D-B817-4094-A2D1-D56379E6A0F3");
+    private bool _sessionNotificationsRegistered;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetSystemMenu(IntPtr windowHandle, bool revert);
@@ -52,6 +57,14 @@ public partial class MainWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool UnregisterPowerSettingNotification(IntPtr notificationHandle);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WTSRegisterSessionNotification(IntPtr windowHandle, uint flags);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WTSUnRegisterSessionNotification(IntPtr windowHandle);
 
     internal MainWindow(AppSettings settings, TimerEngine engine, SettingsStore settingsStore, SessionClock sessionClock)
     {
@@ -264,6 +277,21 @@ public partial class MainWindow : Window
 
     private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (message == WindowMessageSessionChange)
+        {
+            var sessionChange = wParam.ToInt32();
+            if (sessionChange == SessionLockMessage)
+            {
+                SetPauseReason(PauseReason.SessionLocked, true);
+                handled = true;
+            }
+            else if (sessionChange == SessionUnlockMessage)
+            {
+                SetPauseReason(PauseReason.SessionLocked, false);
+                handled = true;
+            }
+        }
+
         if (message == WindowMessagePowerBroadcast
             && wParam.ToInt32() == PowerBroadcastSettingChange
             && lParam != IntPtr.Zero
@@ -729,6 +757,12 @@ public partial class MainWindow : Window
             _windowSource.RemoveHook(WindowMessageHook);
         }
 
+        if (_sessionNotificationsRegistered)
+        {
+            WTSUnRegisterSessionNotification(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            _sessionNotificationsRegistered = false;
+        }
+
         if (_lidSwitchNotification != IntPtr.Zero)
         {
             UnregisterPowerSettingNotification(_lidSwitchNotification);
@@ -771,6 +805,7 @@ public partial class MainWindow : Window
         var windowHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         _windowSource = System.Windows.Interop.HwndSource.FromHwnd(windowHandle);
         _windowSource?.AddHook(WindowMessageHook);
+        _sessionNotificationsRegistered = WTSRegisterSessionNotification(windowHandle, NotifyForThisSession);
         var lidSwitchStateChange = LidSwitchStateChange;
         _lidSwitchNotification = RegisterPowerSettingNotification(windowHandle, ref lidSwitchStateChange, DeviceNotifyWindowHandle);
         var systemMenu = GetSystemMenu(windowHandle, false);
