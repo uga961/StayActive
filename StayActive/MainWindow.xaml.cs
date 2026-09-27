@@ -21,8 +21,11 @@ public partial class MainWindow : Window
     private readonly Queue<ReminderKind> _pendingReminders = new();
     private readonly DispatcherTimer _uiTimer;
     private readonly SessionClock _sessionClock;
+    private readonly PauseReasonSet _pauseReasons = new();
     private ReminderWindow? _activeReminder;
     private ReminderKind? _activeReminderKind;
+    private System.Windows.Interop.HwndSource? _windowSource;
+    private IntPtr _lidSwitchNotification;
     private bool _glassesConfirmed;
     private bool _glassesCheckSkipped;
     private bool _isExiting;
@@ -32,6 +35,10 @@ public partial class MainWindow : Window
     private const uint SystemCommandClose = 0xF060;
     private const uint MenuByCommand = 0x00000000;
     private const uint MenuGrayed = 0x00000001;
+    private const int WindowMessagePowerBroadcast = 0x0218;
+    private const int PowerBroadcastSettingChange = 0x8013;
+    private const uint DeviceNotifyWindowHandle = 0x00000000;
+    private static readonly Guid LidSwitchStateChange = new("BA3E0F4D-B817-4094-A2D1-D56379E6A0F3");
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetSystemMenu(IntPtr windowHandle, bool revert);
@@ -39,15 +46,25 @@ public partial class MainWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint EnableMenuItem(IntPtr menuHandle, uint item, uint flags);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr RegisterPowerSettingNotification(IntPtr recipient, ref Guid powerSettingGuid, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterPowerSettingNotification(IntPtr notificationHandle);
+
     internal MainWindow(AppSettings settings, TimerEngine engine, SettingsStore settingsStore, SessionClock sessionClock)
     {
         _settings = settings;
         _engine = engine;
         _settingsStore = settingsStore;
         _sessionClock = sessionClock;
+        _pauseReasons.Set(PauseReason.Manual, settings.IsPaused);
         InitializeComponent();
         ApplyAppearance(_settings.AppearanceMode, animated: false);
         SystemEvents.UserPreferenceChanged += SystemPreferenceChanged;
+        SystemEvents.SessionSwitch += SystemSessionSwitch;
+        SystemEvents.PowerModeChanged += SystemPowerModeChanged;
 
         var iconResource = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Resources/StayActive.ico"));
         if (iconResource is null)
@@ -100,7 +117,7 @@ public partial class MainWindow : Window
 
     internal void ShowGlassesPrompt()
     {
-        if (_isExiting || _engine.IsPaused)
+        if (_isExiting || _pauseReasons.IsPaused)
         {
             return;
         }
@@ -146,11 +163,20 @@ public partial class MainWindow : Window
 
     public void SetPaused(bool paused)
     {
-        var nowUtc = _sessionClock.UtcNow;
-        if (paused)
+        _settings.IsPaused = paused;
+        SetPauseReason(PauseReason.Manual, paused);
+        PersistSettings();
+    }
+
+    private void SetPauseReason(PauseReason reason, bool isActive)
+    {
+        var wasPaused = _engine.IsPaused;
+        _pauseReasons.Set(reason, isActive);
+        var shouldPause = _pauseReasons.IsPaused;
+
+        if (shouldPause && !wasPaused)
         {
-            _engine.Pause(nowUtc);
-            _settings.IsPaused = true;
+            _engine.Pause(_sessionClock.UtcNow);
             if (GlassesPromptView.Visibility == Visibility.Visible && !_glassesConfirmed)
             {
                 _glassesCheckSkipped = true;
@@ -158,6 +184,7 @@ public partial class MainWindow : Window
                 Topmost = false;
                 HideToTray();
             }
+
             if (_activeReminder is not null && _activeReminderKind is { } activeKind)
             {
                 _closingReminderForPause = true;
@@ -168,15 +195,9 @@ public partial class MainWindow : Window
                 _activeReminderKind = null;
             }
         }
-        else
+        else if (!shouldPause && wasPaused)
         {
-            _engine.Resume(nowUtc);
-            _settings.IsPaused = false;
-        }
-
-        RefreshDashboard();
-        if (!paused)
-        {
+            _engine.Resume(_sessionClock.UtcNow);
             if (_glassesConfirmed)
             {
                 ShowNextReminder();
@@ -186,15 +207,84 @@ public partial class MainWindow : Window
                 ShowGlassesPrompt();
             }
         }
+
+        RefreshDashboard();
         UpdateTrayPauseItem();
-        PersistSettings();
+    }
+
+    private void SystemSessionSwitch(object? sender, SessionSwitchEventArgs e)
+    {
+        var locked = e.Reason switch
+        {
+            SessionSwitchReason.SessionLock => true,
+            SessionSwitchReason.SessionUnlock => false,
+            _ => (bool?)null
+        };
+        if (locked is { } isLocked)
+        {
+            DispatchPauseReason(PauseReason.SessionLocked, isLocked);
+        }
+    }
+
+    private void SystemPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        var suspended = e.Mode switch
+        {
+            PowerModes.Suspend => true,
+            PowerModes.Resume => false,
+            _ => (bool?)null
+        };
+        if (suspended is { } isSuspended)
+        {
+            DispatchPauseReason(PauseReason.SystemSuspended, isSuspended);
+        }
+    }
+
+    private void DispatchPauseReason(PauseReason reason, bool isActive)
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        try
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!_isExiting)
+                {
+                    SetPauseReason(reason, isActive);
+                }
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message == WindowMessagePowerBroadcast
+            && wParam.ToInt32() == PowerBroadcastSettingChange
+            && lParam != IntPtr.Zero
+            && Marshal.PtrToStructure<Guid>(lParam) == LidSwitchStateChange)
+        {
+            var dataLength = Marshal.ReadInt32(lParam, 16);
+            if (dataLength > 0)
+            {
+                var lidClosed = Marshal.ReadByte(lParam, 20) == 0;
+                SetPauseReason(PauseReason.LidClosed, lidClosed);
+            }
+        }
+
+        return IntPtr.Zero;
     }
 
     private Forms.ContextMenuStrip CreateTrayMenu()
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open StayActive", null, (_, _) => OpenDashboard());
-        menu.Items.Add("Pause all", null, (_, _) => SetPaused(!_engine.IsPaused));
+        menu.Items.Add("Pause all", null, (_, _) => SetPaused(!_settings.IsPaused));
         menu.Items.Add("Settings", null, (_, _) => OpenSettings());
         menu.Items.Add("Create desktop shortcut", null, (_, _) => CreateDesktopShortcut());
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -206,7 +296,7 @@ public partial class MainWindow : Window
     {
         if (_trayIcon.ContextMenuStrip?.Items.Count > 1)
         {
-            _trayIcon.ContextMenuStrip.Items[1].Text = _engine.IsPaused ? "Resume all" : "Pause all";
+            _trayIcon.ContextMenuStrip.Items[1].Text = _settings.IsPaused ? "Resume all" : "Pause all";
         }
     }
 
@@ -289,10 +379,10 @@ public partial class MainWindow : Window
 
     private void RefreshDashboard()
     {
-        PauseButton.Content = _engine.IsPaused ? "Resume all" : "Pause all";
-        PauseStatusText.Text = _engine.IsPaused ? "Exam mode: reminders paused" : "Reminders are running";
-        PauseDetailText.Text = _engine.IsPaused
-            ? "Timers are held in place. Resume when it is safe to continue."
+        PauseButton.Content = _settings.IsPaused ? "Resume all" : "Pause all";
+        PauseStatusText.Text = GetPauseStatus();
+        PauseDetailText.Text = _pauseReasons.IsPaused
+            ? "All reminder timers are held until the active pause conditions clear."
             : "Pause all reminders any time, including during an exam.";
         PauseStatusText.Foreground = (System.Windows.Media.Brush)FindResource(_engine.IsPaused ? "ThemePausedText" : "ThemeGood");
 
@@ -307,6 +397,26 @@ public partial class MainWindow : Window
         WalkingRemainingText.Text = GetTimerText(ReminderKind.Walking, "Next reminder");
         FooterStatusText.Text = "Settings are stored locally. Camera is off.";
         UpdateTrayPauseItem();
+    }
+
+    private string GetPauseStatus()
+    {
+        if (_pauseReasons.Contains(PauseReason.SessionLocked))
+        {
+            return "Windows session locked: reminders paused";
+        }
+
+        if (_pauseReasons.Contains(PauseReason.LidClosed))
+        {
+            return "Lid closed: reminders paused";
+        }
+
+        if (_pauseReasons.Contains(PauseReason.SystemSuspended))
+        {
+            return "System asleep: reminders paused";
+        }
+
+        return _settings.IsPaused ? "Exam mode: reminders paused" : "Reminders are running";
     }
 
     private string GetTimerText(ReminderKind kind, string label)
@@ -569,7 +679,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PauseButton_Click(object sender, RoutedEventArgs e) => SetPaused(!_engine.IsPaused);
+    private void PauseButton_Click(object sender, RoutedEventArgs e) => SetPaused(!_settings.IsPaused);
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
 
@@ -612,6 +722,19 @@ public partial class MainWindow : Window
         _isExiting = true;
         _uiTimer.Stop();
         SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
+        SystemEvents.SessionSwitch -= SystemSessionSwitch;
+        SystemEvents.PowerModeChanged -= SystemPowerModeChanged;
+        if (_windowSource is not null)
+        {
+            _windowSource.RemoveHook(WindowMessageHook);
+        }
+
+        if (_lidSwitchNotification != IntPtr.Zero)
+        {
+            UnregisterPowerSettingNotification(_lidSwitchNotification);
+            _lidSwitchNotification = IntPtr.Zero;
+        }
+
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _trayIconImage.Dispose();
@@ -646,6 +769,10 @@ public partial class MainWindow : Window
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
         var windowHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        _windowSource = System.Windows.Interop.HwndSource.FromHwnd(windowHandle);
+        _windowSource?.AddHook(WindowMessageHook);
+        var lidSwitchStateChange = LidSwitchStateChange;
+        _lidSwitchNotification = RegisterPowerSettingNotification(windowHandle, ref lidSwitchStateChange, DeviceNotifyWindowHandle);
         var systemMenu = GetSystemMenu(windowHandle, false);
         EnableMenuItem(systemMenu, SystemCommandClose, MenuByCommand | MenuGrayed);
     }

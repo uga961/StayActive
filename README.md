@@ -2,6 +2,8 @@
 
 StayActive is a small Windows desktop reminder app built with WPF and .NET 8. It keeps water, eye-break, and walking schedules independent, can stay in the system tray, and stores its settings locally.
 
+Current release: `Publish/StayActive-v1.2.exe`.
+
 ## Current Scope
 
 Implemented reminders:
@@ -10,10 +12,14 @@ Implemented reminders:
 - 20-20-20 eye break: 20-minute interval and 20-second duration by default. Both are configurable; the reminder can be snoozed for five minutes.
 - Walking: 60-minute interval and two-minute screen block by default. The interval is configurable, and the block can be set to 2 or 3 minutes. The full-screen reminder cannot be dismissed early through its window; it clears when the countdown ends. Pausing all reminders remains available for exam sessions.
 - Pause all: available in the dashboard and tray menu. The pause state persists across restarts; reminders stay paused until resumed.
+- Automatic inactivity pause: locking Windows, system suspend, or lid closure pauses reminders. Timers resume only after every active Windows pause condition clears; manual pause remains independent.
+- Automatic inactivity pause: lock the Windows session, suspend the system, or close the lid to pause reminders. Timers resume only after all automatic pause conditions clear; manual Pause all remains independent.
 - The dashboard shows elapsed `HH:mm:ss` since launch. Eye, water, and walking countdowns use that same monotonic session clock and show total `MM:ss` remaining.
 - Appearance can follow Windows or be set to Light or Dark in Settings; changes fade smoothly.
 
 Windows startup is optional and off by default. Enable it in Settings to register StayActive for the current Windows user. Startup can be minimized to the tray and configured to start paused for exam sessions. The dashboard and tray also provide a one-click Pause all / Resume all control.
+
+Windows session lock/unlock and power suspend/resume notifications pause and resume timers through event-driven handlers. StayActive also registers for the native lid-switch notification, so a lid-close event pauses timers even on systems configured not to sleep when the lid is shut.
 
 The **Appearance** setting has three options: **System** follows the Windows app-theme preference, while **Light** and **Dark** select a fixed palette. Changes are saved and transition with a brief fade.
 
@@ -35,6 +41,8 @@ dotnet run --project StayActive/StayActive.csproj
 
 The main window's close command is disabled; minimize hides StayActive to the tray, and maximize/restore remains available. Use the tray menu's Exit command to stop the application. Right-click the tray icon for Open, Pause/Resume, Settings, Create desktop shortcut, and Exit. The dashboard clock displays elapsed time since StayActive launched as `HH:mm:ss`.
 
+The v1.2 release pauses reminder timers on Windows session lock, system suspend, and lid-close power notifications. It resumes only when the session is unlocked, the system has resumed, and the lid is open. Windows power settings may determine whether a closed lid suspends the PC; StayActive also listens for the lid-switch state directly.
+
 ## Publish A Single-File Executable
 
 Run from the repository root on Windows:
@@ -43,7 +51,7 @@ Run from the repository root on Windows:
 dotnet publish StayActive/StayActive.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o publish
 ```
 
-The intended executable is `publish/StayActive.exe`. This packages the .NET runtime and StayActive icon, so a separate .NET installation is not required on the target PC. Verify the contents of the publish folder and test the executable on a clean Windows 10/11 x64 machine before distributing it. There is no installer; copy the executable to a stable location before enabling Windows startup, because the startup registry entry points to that path.
+The publish output includes the .NET runtime and StayActive icon, so a separate .NET installation is not required on the target PC. Versioned releases are stored under `Publish/StayActive-vX.Y.exe`. Test each executable on a clean Windows 10/11 x64 machine before distributing it. There is no installer; copy the executable to a stable location before enabling Windows startup, because the startup registry entry points to that path.
 
 ## Settings And Privacy
 

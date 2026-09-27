@@ -110,4 +110,31 @@ public class TimerEngineTests
     {
         Assert.Equal("00:00", TimerFormatter.FormatMinutesSeconds(TimeSpan.FromSeconds(-1)));
     }
+
+    [Fact]
+    public void PauseReasonSet_RemainsPausedUntilEveryReasonClears()
+    {
+        var pauseReasons = new PauseReasonSet();
+        pauseReasons.Set(PauseReason.Manual, true);
+        pauseReasons.Set(PauseReason.SessionLocked, true);
+        pauseReasons.Set(PauseReason.SystemSuspended, true);
+
+        pauseReasons.Set(PauseReason.SessionLocked, false);
+        pauseReasons.Set(PauseReason.SystemSuspended, false);
+
+        Assert.True(pauseReasons.IsPaused);
+        Assert.True(pauseReasons.Contains(PauseReason.Manual));
+
+        pauseReasons.Set(PauseReason.Manual, false);
+
+        Assert.False(pauseReasons.IsPaused);
+    }
+
+    [Fact]
+    public void PauseReasonSet_RejectsCombinedReasonsInSingleUpdate()
+    {
+        var pauseReasons = new PauseReasonSet();
+
+        Assert.Throws<ArgumentException>(() => pauseReasons.Set(PauseReason.SessionLocked | PauseReason.LidClosed, true));
+    }
 }
