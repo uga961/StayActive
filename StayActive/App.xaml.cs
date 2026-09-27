@@ -23,6 +23,7 @@ public partial class App : System.Windows.Application
 		_timerEngine = CreateTimerEngine(_settings, nowUtc);
 		if (_settings.IsPaused)
 		{
+			_sessionClock.Pause();
 			_timerEngine.Pause(nowUtc);
 		}
 

@@ -48,7 +48,7 @@ internal sealed class ReminderWindow : Window
         };
         var description = kind switch
         {
-            ReminderKind.Water => "Take a short water break.",
+            ReminderKind.Water => "Take a short water break. This reminder closes if ignored.",
             ReminderKind.EyeBreak => "Look at something at least 20 feet / 6 meters away.",
             _ => "Walk away from your desk. This screen will clear when the countdown ends."
         };
@@ -88,7 +88,7 @@ internal sealed class ReminderWindow : Window
             Margin = new Thickness(0, 16, 0, 0)
         });
 
-        if (kind != ReminderKind.Water)
+        if (duration > TimeSpan.Zero)
         {
             content.Children.Add(_countdownText);
         }
@@ -119,7 +119,7 @@ internal sealed class ReminderWindow : Window
             }
         };
 
-        if (kind != ReminderKind.Water)
+        if (duration > TimeSpan.Zero)
         {
             _countdownTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _countdownTimer.Tick += (_, _) =>
@@ -129,7 +129,7 @@ internal sealed class ReminderWindow : Window
                 if (remaining <= TimeSpan.Zero)
                 {
                     _countdownTimer.Stop();
-                    Finish(ReminderAction.Complete);
+                    Finish(kind == ReminderKind.Water ? ReminderAction.Dismiss : ReminderAction.Complete);
                 }
             };
             _countdownTimer.Start();

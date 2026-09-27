@@ -190,6 +190,7 @@ public partial class MainWindow : Window
         if (shouldPause && !wasPaused)
         {
             _engine.Pause(_sessionClock.UtcNow);
+            _sessionClock.Pause();
             if (GlassesPromptView.Visibility == Visibility.Visible && !_glassesConfirmed)
             {
                 _glassesCheckSkipped = true;
@@ -211,6 +212,7 @@ public partial class MainWindow : Window
         else if (!shouldPause && wasPaused)
         {
             _engine.Resume(_sessionClock.UtcNow);
+            _sessionClock.Resume();
             if (_glassesConfirmed)
             {
                 ShowNextReminder();
@@ -360,6 +362,7 @@ public partial class MainWindow : Window
         {
             ReminderKind.EyeBreak => TimeSpan.FromSeconds(_settings.EyeBreakDurationSeconds),
             ReminderKind.Walking => TimeSpan.FromMinutes(_settings.WalkingDurationMinutes),
+            ReminderKind.Water => TimeSpan.FromSeconds(35),
             _ => TimeSpan.Zero
         };
 
@@ -399,6 +402,24 @@ public partial class MainWindow : Window
         else
         {
             _engine.Snooze(kind, TimeSpan.FromMinutes(5), now);
+        }
+
+        PersistSettings();
+        RefreshDashboard();
+    }
+
+    private void WaterTakenButton_Click(object sender, RoutedEventArgs e) => CompleteActivityFromDashboard(ReminderKind.Water);
+
+    private void WalkingTakenButton_Click(object sender, RoutedEventArgs e) => CompleteActivityFromDashboard(ReminderKind.Walking);
+
+    private void CompleteActivityFromDashboard(ReminderKind kind)
+    {
+        _engine.Complete(kind, _sessionClock.UtcNow);
+        var pendingReminders = _pendingReminders.Where(pending => pending != kind).ToArray();
+        _pendingReminders.Clear();
+        foreach (var pending in pendingReminders)
+        {
+            _pendingReminders.Enqueue(pending);
         }
 
         PersistSettings();

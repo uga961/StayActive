@@ -137,4 +137,24 @@ public class TimerEngineTests
 
         Assert.Throws<ArgumentException>(() => pauseReasons.Set(PauseReason.SessionLocked | PauseReason.LidClosed, true));
     }
+
+    [Fact]
+    public void SessionClock_PauseFreezesElapsedTimeUntilResumed()
+    {
+        var clock = new SessionClock(Start);
+        clock.Pause();
+        var pausedElapsed = clock.Elapsed;
+        var pausedUtc = clock.UtcNow;
+
+        clock.Pause();
+
+        Assert.True(clock.IsPaused);
+        Assert.Equal(pausedElapsed, clock.Elapsed);
+        Assert.Equal(pausedUtc, clock.UtcNow);
+
+        clock.Resume();
+
+        Assert.False(clock.IsPaused);
+        Assert.True(clock.Elapsed >= pausedElapsed);
+    }
 }
