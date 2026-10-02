@@ -157,4 +157,35 @@ public class TimerEngineTests
         Assert.False(clock.IsPaused);
         Assert.True(clock.Elapsed >= pausedElapsed);
     }
+
+    [Fact]
+    public void CommunicationPause_HoldsEyeAndWalkingButWaterContinues()
+    {
+        var engine = new TimerEngine(Start);
+        engine.SetPauseReason(PauseReason.Communication, true, Start + TimeSpan.FromMinutes(10));
+
+        Assert.Contains(ReminderKind.Water, engine.CollectDue(Start + TimeSpan.FromMinutes(45)));
+        Assert.DoesNotContain(ReminderKind.EyeBreak, engine.CollectDue(Start + TimeSpan.FromMinutes(45)));
+        Assert.DoesNotContain(ReminderKind.Walking, engine.CollectDue(Start + TimeSpan.FromMinutes(45)));
+
+        engine.SetPauseReason(PauseReason.Communication, false, Start + TimeSpan.FromMinutes(50));
+
+        Assert.Contains(ReminderKind.EyeBreak, engine.CollectDue(Start + TimeSpan.FromMinutes(60)));
+        Assert.Contains(ReminderKind.Walking, engine.CollectDue(Start + TimeSpan.FromMinutes(100)));
+    }
+
+    [Fact]
+    public void CommunicationAndSystemPause_ShiftsEachDeadlineByUnionOfPausedTime()
+    {
+        var engine = new TimerEngine(Start);
+        engine.SetPauseReason(PauseReason.Communication, true, Start + TimeSpan.FromMinutes(5));
+        engine.Pause(Start + TimeSpan.FromMinutes(10));
+        engine.SetPauseReason(PauseReason.Communication, false, Start + TimeSpan.FromMinutes(20));
+        engine.Resume(Start + TimeSpan.FromMinutes(30));
+
+        var snapshots = engine.GetSnapshots().ToDictionary(snapshot => snapshot.Kind);
+        Assert.Equal(Start + TimeSpan.FromMinutes(45), snapshots[ReminderKind.EyeBreak].NextDueUtc);
+        Assert.Equal(Start + TimeSpan.FromMinutes(65), snapshots[ReminderKind.Water].NextDueUtc);
+        Assert.Equal(Start + TimeSpan.FromMinutes(85), snapshots[ReminderKind.Walking].NextDueUtc);
+    }
 }

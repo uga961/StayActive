@@ -7,7 +7,8 @@ public enum PauseReason
     Manual = 1,
     SessionLocked = 2,
     SystemSuspended = 4,
-    LidClosed = 8
+    LidClosed = 8,
+    Communication = 16
 }
 
 public sealed class PauseReasonSet

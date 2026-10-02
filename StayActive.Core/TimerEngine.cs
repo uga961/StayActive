@@ -14,7 +14,7 @@ public sealed record ReminderSnapshot(ReminderKind Kind, TimeSpan Interval, bool
 public sealed class TimerEngine
 {
     private readonly Dictionary<ReminderKind, ReminderState> _states;
-    private DateTimeOffset? _pausedAtUtc;
+    private readonly PauseReasonSet _globalPauseReasons = new();
 
     public TimerEngine(DateTimeOffset nowUtc, IReadOnlyDictionary<ReminderKind, ReminderOptions>? options = null)
     {
@@ -33,7 +33,7 @@ public sealed class TimerEngine
             });
     }
 
-    public bool IsPaused => _pausedAtUtc.HasValue;
+    public bool IsPaused => _globalPauseReasons.IsPaused;
 
     public IReadOnlyList<ReminderSnapshot> GetSnapshots() => _states
         .Select(pair => new ReminderSnapshot(
@@ -54,7 +54,7 @@ public sealed class TimerEngine
         var due = new List<ReminderKind>();
         foreach (var (kind, state) in _states)
         {
-            if (state.IsEnabled && !state.IsPending && nowUtc >= state.NextDueUtc)
+            if (state.IsEnabled && !state.PauseReasons.IsPaused && !state.IsPending && nowUtc >= state.NextDueUtc)
             {
                 state.IsPending = true;
                 due.Add(kind);
@@ -66,14 +66,16 @@ public sealed class TimerEngine
 
     public TimeSpan GetRemaining(ReminderKind kind, DateTimeOffset nowUtc)
     {
-        var remaining = _states[kind].NextDueUtc - nowUtc;
+        var state = _states[kind];
+        var effectiveNow = state.PausedAtUtc ?? nowUtc;
+        var remaining = state.NextDueUtc - effectiveNow;
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
     public void Complete(ReminderKind kind, DateTimeOffset nowUtc)
     {
         var state = _states[kind];
-        state.NextDueUtc = nowUtc + state.Interval;
+        state.NextDueUtc = GetDeadline(state, nowUtc, state.Interval);
         state.IsPending = false;
     }
 
@@ -85,7 +87,7 @@ public sealed class TimerEngine
         }
 
         var state = _states[kind];
-        state.NextDueUtc = nowUtc + duration;
+        state.NextDueUtc = GetDeadline(state, nowUtc, duration);
         state.IsPending = false;
     }
 
@@ -94,7 +96,7 @@ public sealed class TimerEngine
         var state = _states[kind];
         state.IsEnabled = enabled;
         state.IsPending = false;
-        state.NextDueUtc = nowUtc + state.Interval;
+        state.NextDueUtc = GetDeadline(state, nowUtc, state.Interval);
     }
 
     public void SetInterval(ReminderKind kind, TimeSpan interval, DateTimeOffset nowUtc)
@@ -107,31 +109,58 @@ public sealed class TimerEngine
         var state = _states[kind];
         state.Interval = interval;
         state.IsPending = false;
-        state.NextDueUtc = nowUtc + interval;
+        state.NextDueUtc = GetDeadline(state, nowUtc, interval);
     }
 
     public void Pause(DateTimeOffset nowUtc)
     {
-        _pausedAtUtc ??= nowUtc;
+        SetPauseReason(PauseReason.Manual, true, nowUtc);
     }
 
     public void Resume(DateTimeOffset nowUtc)
     {
-        if (_pausedAtUtc is not { } pausedAtUtc)
+        SetPauseReason(PauseReason.Manual, false, nowUtc);
+    }
+
+    public void SetPauseReason(PauseReason reason, bool isActive, DateTimeOffset nowUtc)
+    {
+        if (reason == PauseReason.Communication)
         {
+            SetStatePauseReason(_states[ReminderKind.EyeBreak], reason, isActive, nowUtc);
+            SetStatePauseReason(_states[ReminderKind.Walking], reason, isActive, nowUtc);
             return;
         }
 
-        var pausedDuration = nowUtc - pausedAtUtc;
-        if (pausedDuration > TimeSpan.Zero)
+        _globalPauseReasons.Set(reason, isActive);
+        foreach (var state in _states.Values)
         {
-            foreach (var state in _states.Values)
+            SetStatePauseReason(state, reason, isActive, nowUtc);
+        }
+    }
+
+    private static DateTimeOffset GetDeadline(ReminderState state, DateTimeOffset nowUtc, TimeSpan delay) =>
+        (state.PausedAtUtc ?? nowUtc) + delay;
+
+    private static void SetStatePauseReason(ReminderState state, PauseReason reason, bool isActive, DateTimeOffset nowUtc)
+    {
+        var wasPaused = state.PauseReasons.IsPaused;
+        state.PauseReasons.Set(reason, isActive);
+        var isPaused = state.PauseReasons.IsPaused;
+
+        if (!wasPaused && isPaused)
+        {
+            state.PausedAtUtc = nowUtc;
+        }
+        else if (wasPaused && !isPaused && state.PausedAtUtc is { } pausedAtUtc)
+        {
+            var pausedDuration = nowUtc - pausedAtUtc;
+            if (pausedDuration > TimeSpan.Zero)
             {
                 state.NextDueUtc += pausedDuration;
             }
-        }
 
-        _pausedAtUtc = null;
+            state.PausedAtUtc = null;
+        }
     }
 
     public static TimeSpan GetDefaultInterval(ReminderKind kind) => kind switch
@@ -144,9 +173,11 @@ public sealed class TimerEngine
 
     private sealed class ReminderState(TimeSpan interval, bool isEnabled, DateTimeOffset nextDueUtc)
     {
+        public PauseReasonSet PauseReasons { get; } = new();
         public TimeSpan Interval { get; set; } = interval;
         public bool IsEnabled { get; set; } = isEnabled;
         public DateTimeOffset NextDueUtc { get; set; } = nextDueUtc;
         public bool IsPending { get; set; }
+        public DateTimeOffset? PausedAtUtc { get; set; }
     }
 }

@@ -2,7 +2,7 @@
 
 StayActive is a small Windows desktop reminder app built with WPF and .NET 8. It keeps water, eye-break, and walking schedules independent, can stay in the system tray, and stores its settings locally.
 
-Current release: `Publish/StayActive-v2.0.exe`.
+Current release: `Publish/StayActive-v2.1.exe`.
 
 ## Current Scope
 
@@ -11,6 +11,8 @@ Implemented reminders:
 - Water: 45-minute default; configurable from 30 to 120 minutes. The full-screen reminder resets only after the user confirms.
 - Dashboard quick actions: **Drank water** and **Took a 2 min walk** reset only the matching reminder timer.
 - Water overlay: shows a 35-second countdown; if ignored, it closes and snoozes only the water reminder for five minutes.
+- Media: while a reminder overlay is visible, StayActive pauses system media sessions that report active playback and resumes only sessions it successfully paused.
+- Calls/meetings: active microphone capture from recognized meeting clients or browsers pauses Eye Break and Walking schedules only. Water remains active and can still remind during a call.
 - 20-20-20 eye break: 20-minute interval and 20-second duration by default. Both are configurable; the reminder can be snoozed for five minutes.
 - Walking: 60-minute interval and two-minute screen block by default. The interval is configurable, and the block can be set to 2 or 3 minutes. The full-screen reminder cannot be dismissed early through its window; it clears when the countdown ends. Pausing all reminders remains available for exam sessions.
 - Pause all: available in the dashboard and tray menu. The pause state persists across restarts; reminders stay paused until resumed.
@@ -21,6 +23,8 @@ Implemented reminders:
 Windows startup is optional and off by default. Enable it in Settings to register StayActive for the current Windows user. Startup can be minimized to the tray and configured to start paused for exam sessions. The dashboard and tray also provide a one-click Pause all / Resume all control.
 
 Windows session lock/unlock and power suspend/resume notifications pause and resume timers through event-driven handlers. StayActive also registers for the native lid-switch notification, so a lid-close event pauses timers even on systems configured not to sleep when the lid is shut.
+
+Meeting detection is a best-effort local check: every three seconds, and immediately before an overlay pauses media, StayActive checks active microphone-capture audio sessions and matches their process to common meeting clients and browsers. Browser microphone use for non-meeting purposes may also pause eye/walk timers. No audio is recorded. Media pausing requires the player to publish a Windows system media session; apps with raw audio output but no media controls may not respond. StayActive resumes only sessions it observed playing and successfully paused. Recognized conferencing-app/browser media is left running while a call is detected.
 
 The **Appearance** setting has three options: **System** follows the Windows app-theme preference, while **Light** and **Dark** select a fixed palette. Changes are saved and transition with a brief fade.
 
@@ -42,7 +46,7 @@ dotnet run --project StayActive/StayActive.csproj
 
 The main window's close command is disabled; minimize hides StayActive to the tray, and maximize/restore remains available. Use the tray menu's Exit command to stop the application. Right-click the tray icon for Open, Pause/Resume, Settings, Create desktop shortcut, and Exit. The dashboard clock displays elapsed time since StayActive launched as `HH:mm:ss`.
 
-The v2.0 release pauses the session clock and reminder timers on Windows session lock, system suspend, and lid-close power notifications. It resumes only when the session is unlocked, the system has resumed, and the lid is open. Windows power settings may determine whether a closed lid suspends the PC; StayActive also listens for the lid-switch state directly.
+The v2.1 release pauses the session clock and reminder timers on Windows session lock, system suspend, and lid-close power notifications. It resumes only when the session is unlocked, the system has resumed, and the lid is open. Windows power settings may determine whether a closed lid suspends the PC; StayActive also listens for the lid-switch state directly.
 
 The Release executable is published ReadyToRun to reduce JIT work at startup. First-use extraction can take longer than subsequent launches.
 

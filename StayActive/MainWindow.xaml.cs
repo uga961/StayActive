@@ -20,8 +20,11 @@ public partial class MainWindow : Window
     private readonly System.Drawing.Icon _trayIconImage;
     private readonly Queue<ReminderKind> _pendingReminders = new();
     private readonly DispatcherTimer _uiTimer;
+    private readonly DispatcherTimer _communicationTimer;
     private readonly SessionClock _sessionClock;
     private readonly PauseReasonSet _pauseReasons = new();
+    private readonly MediaSessionController _mediaSessionController = new();
+    private readonly CommunicationDetector _communicationDetector = new();
     private ReminderWindow? _activeReminder;
     private ReminderKind? _activeReminderKind;
     private System.Windows.Interop.HwndSource? _windowSource;
@@ -44,6 +47,8 @@ public partial class MainWindow : Window
     private const uint NotifyForThisSession = 0;
     private static readonly Guid LidSwitchStateChange = new("BA3E0F4D-B817-4094-A2D1-D56379E6A0F3");
     private bool _sessionNotificationsRegistered;
+    private bool _communicationActive;
+    private int _communicationCheckRunning;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetSystemMenu(IntPtr windowHandle, bool revert);
@@ -108,6 +113,10 @@ public partial class MainWindow : Window
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _uiTimer.Tick += (_, _) => Tick();
         _uiTimer.Start();
+        _communicationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _communicationTimer.Tick += CommunicationTimer_Tick;
+        _communicationTimer.Start();
+        CommunicationTimer_Tick(this, EventArgs.Empty);
         LoadSettingsIntoControls();
         ClockText.Text = FormatElapsedClock();
         RefreshDashboard();
@@ -199,15 +208,7 @@ public partial class MainWindow : Window
                 HideToTray();
             }
 
-            if (_activeReminder is not null && _activeReminderKind is { } activeKind)
-            {
-                _closingReminderForPause = true;
-                _activeReminder.CloseForAppControl();
-                _closingReminderForPause = false;
-                _pendingReminders.Enqueue(activeKind);
-                _activeReminder = null;
-                _activeReminderKind = null;
-            }
+            InterruptActiveReminder();
         }
         else if (!shouldPause && wasPaused)
         {
@@ -221,10 +222,83 @@ public partial class MainWindow : Window
             {
                 ShowGlassesPrompt();
             }
+
+            ResumeMediaIfIdle();
         }
 
         RefreshDashboard();
         UpdateTrayPauseItem();
+    }
+
+    private async void CommunicationTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_isExiting || Interlocked.Exchange(ref _communicationCheckRunning, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var active = await Task.Run(_communicationDetector.IsCommunicationCaptureActive);
+            if (!_isExiting && active != _communicationActive)
+            {
+                SetCommunicationActive(active);
+            }
+
+            if (!_isExiting && _activeReminder is not null)
+            {
+                await _mediaSessionController.PausePlayingSessionsAsync(_communicationActive);
+            }
+        }
+        catch (Exception exception) when (exception is COMException or InvalidOperationException or UnauthorizedAccessException)
+        {
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _communicationCheckRunning, 0);
+        }
+    }
+
+    private void SetCommunicationActive(bool active)
+    {
+        if (_communicationActive == active)
+        {
+            return;
+        }
+
+        _communicationActive = active;
+        _engine.SetPauseReason(PauseReason.Communication, active, _sessionClock.UtcNow);
+        if (active && _activeReminderKind is ReminderKind.EyeBreak or ReminderKind.Walking)
+        {
+            InterruptActiveReminder();
+        }
+
+        RefreshDashboard();
+        ShowNextReminder();
+        ResumeMediaIfIdle();
+    }
+
+    private void InterruptActiveReminder()
+    {
+        if (_activeReminder is null || _activeReminderKind is not { } kind)
+        {
+            return;
+        }
+
+        _closingReminderForPause = true;
+        _activeReminder.CloseForAppControl();
+        _closingReminderForPause = false;
+        _pendingReminders.Enqueue(kind);
+        _activeReminder = null;
+        _activeReminderKind = null;
+    }
+
+    private void ResumeMediaIfIdle()
+    {
+        if (!_engine.IsPaused && _activeReminder is null)
+        {
+            _ = _mediaSessionController.ResumePausedSessionsAsync();
+        }
     }
 
     private void SystemSessionSwitch(object? sender, SessionSwitchEventArgs e)
@@ -357,7 +431,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        var kind = _pendingReminders.Dequeue();
+        ReminderKind? nextKind = null;
+        var pendingCount = _pendingReminders.Count;
+        for (var index = 0; index < pendingCount; index++)
+        {
+            var candidate = _pendingReminders.Dequeue();
+            if (_communicationActive && candidate is ReminderKind.EyeBreak or ReminderKind.Walking)
+            {
+                _pendingReminders.Enqueue(candidate);
+                continue;
+            }
+
+            nextKind = candidate;
+            break;
+        }
+
+        if (nextKind is not { } kind)
+        {
+            return;
+        }
+
         var duration = kind switch
         {
             ReminderKind.EyeBreak => TimeSpan.FromSeconds(_settings.EyeBreakDurationSeconds),
@@ -368,6 +461,7 @@ public partial class MainWindow : Window
 
         _activeReminderKind = kind;
         _activeReminder = new ReminderWindow(kind, duration, action => HandleReminderAction(kind, action));
+        _ = PauseMediaForReminderAsync();
         _activeReminder.Closed += (_, _) =>
         {
             _activeReminder = null;
@@ -379,8 +473,28 @@ public partial class MainWindow : Window
 
             RefreshDashboard();
             ShowNextReminder();
+            ResumeMediaIfIdle();
         };
         _activeReminder.Show();
+    }
+
+    private async Task PauseMediaForReminderAsync()
+    {
+        var activeCall = await Task.Run(_communicationDetector.IsCommunicationCaptureActive);
+        if (_isExiting)
+        {
+            return;
+        }
+
+        if (activeCall != _communicationActive)
+        {
+            await Dispatcher.InvokeAsync(() => SetCommunicationActive(activeCall));
+        }
+
+        if (!_isExiting && _activeReminder is not null)
+        {
+            await _mediaSessionController.PausePlayingSessionsAsync(_communicationActive);
+        }
     }
 
     private void HandleReminderAction(ReminderKind kind, ReminderAction action)
@@ -430,7 +544,9 @@ public partial class MainWindow : Window
     {
         PauseButton.Content = _settings.IsPaused ? "Resume all" : "Pause all";
         PauseStatusText.Text = GetPauseStatus();
-        PauseDetailText.Text = _pauseReasons.IsPaused
+        PauseDetailText.Text = _communicationActive && !_pauseReasons.IsPaused
+            ? "Eye and walking timers are paused during the call. Water reminders remain active."
+            : _pauseReasons.IsPaused
             ? "All reminder timers are held until the active pause conditions clear."
             : "Pause all reminders any time, including during an exam.";
         PauseStatusText.Foreground = (System.Windows.Media.Brush)FindResource(_engine.IsPaused ? "ThemePausedText" : "ThemeGood");
@@ -463,6 +579,11 @@ public partial class MainWindow : Window
         if (_pauseReasons.Contains(PauseReason.SystemSuspended))
         {
             return "System asleep: reminders paused";
+        }
+
+        if (_communicationActive)
+        {
+            return "Call detected: eye and walking reminders paused";
         }
 
         return _settings.IsPaused ? "Exam mode: reminders paused" : "Reminders are running";
@@ -766,10 +887,16 @@ public partial class MainWindow : Window
         Activate();
     }
 
-    private void ExitApplication()
+    private async void ExitApplication()
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         _isExiting = true;
         _uiTimer.Stop();
+        _communicationTimer.Stop();
         SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
         SystemEvents.SessionSwitch -= SystemSessionSwitch;
         SystemEvents.PowerModeChanged -= SystemPowerModeChanged;
@@ -794,6 +921,7 @@ public partial class MainWindow : Window
         _trayIcon.Dispose();
         _trayIconImage.Dispose();
         _activeReminder?.CloseForAppControl();
+        await _mediaSessionController.ResumePausedSessionsAsync();
         Close();
         System.Windows.Application.Current.Shutdown();
     }
