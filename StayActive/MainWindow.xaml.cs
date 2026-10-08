@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly SessionClock _sessionClock;
     private readonly PauseReasonSet _pauseReasons = new();
     private readonly MediaSessionController _mediaSessionController = new();
+    private readonly VlcMediaController _vlcMediaController = new();
     private readonly CommunicationDetector _communicationDetector = new();
     private ReminderWindow? _activeReminder;
     private ReminderKind? _activeReminderKind;
@@ -32,7 +33,6 @@ public partial class MainWindow : Window
     private bool _glassesConfirmed;
     private bool _glassesCheckSkipped;
     private bool _isExiting;
-    private bool _closingReminderForPause;
     private bool _isLoadingSettings;
     private long _themeTransitionVersion;
     private const uint SystemCommandClose = 0xF060;
@@ -208,7 +208,8 @@ public partial class MainWindow : Window
                 HideToTray();
             }
 
-            InterruptActiveReminder();
+            _activeReminder?.PauseCountdown();
+            _activeReminder?.Hide();
         }
         else if (!shouldPause && wasPaused)
         {
@@ -216,7 +217,14 @@ public partial class MainWindow : Window
             _sessionClock.Resume();
             if (_glassesConfirmed)
             {
-                ShowNextReminder();
+                if (_activeReminder is not null)
+                {
+                    ResumeActiveReminderIfAllowed();
+                }
+                else
+                {
+                    ShowNextReminder();
+                }
             }
             else
             {
@@ -245,9 +253,9 @@ public partial class MainWindow : Window
                 SetCommunicationActive(active);
             }
 
-            if (!_isExiting && _activeReminder is not null)
+            if (!_isExiting && _activeReminder?.IsVisible == true)
             {
-                await _mediaSessionController.PausePlayingSessionsAsync(_communicationActive);
+                await PauseMediaForOverlayAsync();
             }
         }
         catch (Exception exception) when (exception is COMException or InvalidOperationException or UnauthorizedAccessException)
@@ -270,34 +278,55 @@ public partial class MainWindow : Window
         _engine.SetPauseReason(PauseReason.Communication, active, _sessionClock.UtcNow);
         if (active && _activeReminderKind is ReminderKind.EyeBreak or ReminderKind.Walking)
         {
-            InterruptActiveReminder();
+            _activeReminder?.PauseCountdown();
+            _activeReminder?.Hide();
+            _ = ResumePausedMediaAsync();
         }
 
         RefreshDashboard();
-        ShowNextReminder();
-        ResumeMediaIfIdle();
+        if (!active)
+        {
+            if (_activeReminder is not null)
+            {
+                ResumeActiveReminderIfAllowed();
+            }
+            else
+            {
+                ShowNextReminder();
+                ResumeMediaIfIdle();
+            }
+        }
+        else
+        {
+            ShowNextReminder();
+        }
     }
 
-    private void InterruptActiveReminder()
+    private void ResumeActiveReminderIfAllowed()
     {
-        if (_activeReminder is null || _activeReminderKind is not { } kind)
+        if (_activeReminder is null || _engine.IsPaused)
         {
             return;
         }
 
-        _closingReminderForPause = true;
-        _activeReminder.CloseForAppControl();
-        _closingReminderForPause = false;
-        _pendingReminders.Enqueue(kind);
-        _activeReminder = null;
-        _activeReminderKind = null;
+        if (_communicationActive && _activeReminderKind is ReminderKind.EyeBreak or ReminderKind.Walking)
+        {
+            _activeReminder.PauseCountdown();
+            _activeReminder.Hide();
+            return;
+        }
+
+        _activeReminder.Topmost = true;
+        _activeReminder.Show();
+        _activeReminder.Activate();
+        _activeReminder.ResumeCountdown();
     }
 
     private void ResumeMediaIfIdle()
     {
         if (!_engine.IsPaused && _activeReminder is null)
         {
-            _ = _mediaSessionController.ResumePausedSessionsAsync();
+            _ = ResumePausedMediaAsync();
         }
     }
 
@@ -461,7 +490,7 @@ public partial class MainWindow : Window
 
         _activeReminderKind = kind;
         _activeReminder = new ReminderWindow(kind, duration, action => HandleReminderAction(kind, action));
-        _ = PauseMediaForReminderAsync();
+        _ = PauseMediaForOverlayAsync();
         _activeReminder.Closed += (_, _) =>
         {
             _activeReminder = null;
@@ -478,7 +507,7 @@ public partial class MainWindow : Window
         _activeReminder.Show();
     }
 
-    private async Task PauseMediaForReminderAsync()
+    private async Task PauseMediaForOverlayAsync()
     {
         var activeCall = await Task.Run(_communicationDetector.IsCommunicationCaptureActive);
         if (_isExiting)
@@ -491,15 +520,25 @@ public partial class MainWindow : Window
             await Dispatcher.InvokeAsync(() => SetCommunicationActive(activeCall));
         }
 
-        if (!_isExiting && _activeReminder is not null)
+        if (!_isExiting && _activeReminder?.IsVisible == true)
         {
-            await _mediaSessionController.PausePlayingSessionsAsync(_communicationActive);
+            var vlcPausedThroughWindowsMedia = await _mediaSessionController.PausePlayingSessionsAsync(_communicationActive);
+            if (!vlcPausedThroughWindowsMedia)
+            {
+                _vlcMediaController.PausePlayingSessions();
+            }
         }
+    }
+
+    private async Task ResumePausedMediaAsync()
+    {
+        await _mediaSessionController.ResumePausedSessionsAsync();
+        _vlcMediaController.ResumePausedSessions();
     }
 
     private void HandleReminderAction(ReminderKind kind, ReminderAction action)
     {
-        if (_closingReminderForPause || _isExiting)
+        if (_isExiting)
         {
             return;
         }
@@ -921,7 +960,7 @@ public partial class MainWindow : Window
         _trayIcon.Dispose();
         _trayIconImage.Dispose();
         _activeReminder?.CloseForAppControl();
-        await _mediaSessionController.ResumePausedSessionsAsync();
+        await ResumePausedMediaAsync();
         Close();
         System.Windows.Application.Current.Shutdown();
     }

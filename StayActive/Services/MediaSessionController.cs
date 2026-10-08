@@ -9,8 +9,9 @@ internal sealed class MediaSessionController
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
 
     // Media control is best-effort; unsupported players must not interrupt reminders.
-    public async Task PausePlayingSessionsAsync(bool communicationActive)
+    public async Task<bool> PausePlayingSessionsAsync(bool communicationActive)
     {
+        var vlcPaused = false;
         await _gate.WaitAsync();
         try
         {
@@ -28,6 +29,7 @@ internal sealed class MediaSessionController
                     if (await session.TryPauseAsync())
                     {
                         _pausedSessions.Add(session);
+                        vlcPaused |= session.SourceAppUserModelId.Contains("vlc", StringComparison.OrdinalIgnoreCase);
                     }
                 }
                 catch (Exception)
@@ -42,6 +44,8 @@ internal sealed class MediaSessionController
         {
             _gate.Release();
         }
+
+        return vlcPaused;
     }
 
     public async Task ResumePausedSessionsAsync()

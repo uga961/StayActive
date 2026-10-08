@@ -16,9 +16,9 @@ internal enum ReminderAction
 internal sealed class ReminderWindow : Window
 {
     private readonly DispatcherTimer? _countdownTimer;
+    private readonly PausableCountdown? _countdown;
     private readonly TextBlock _countdownText;
     private readonly Action<ReminderAction> _onAction;
-    private readonly DateTimeOffset _endsAtUtc;
     private readonly bool _blocksDismissal;
     private bool _allowClose;
     private bool _actionSent;
@@ -26,7 +26,7 @@ internal sealed class ReminderWindow : Window
     public ReminderWindow(ReminderKind kind, TimeSpan duration, Action<ReminderAction> onAction)
     {
         _onAction = onAction;
-        _endsAtUtc = DateTimeOffset.UtcNow + duration;
+        _countdown = duration > TimeSpan.Zero ? new PausableCountdown(duration, DateTimeOffset.UtcNow) : null;
         _blocksDismissal = kind == ReminderKind.Walking;
         WindowStyle = WindowStyle.None;
         WindowState = WindowState.Maximized;
@@ -124,7 +124,7 @@ internal sealed class ReminderWindow : Window
             _countdownTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _countdownTimer.Tick += (_, _) =>
             {
-                var remaining = _endsAtUtc - DateTimeOffset.UtcNow;
+                var remaining = _countdown!.GetRemaining(DateTimeOffset.UtcNow);
                 _countdownText.Text = FormatTime(remaining);
                 if (remaining <= TimeSpan.Zero)
                 {
@@ -160,6 +160,29 @@ internal sealed class ReminderWindow : Window
         _countdownTimer?.Stop();
         _onAction(action);
         Close();
+    }
+
+    public void PauseCountdown()
+    {
+        if (_countdownTimer is null || _countdown is null || _countdown.IsPaused)
+        {
+            return;
+        }
+
+        _countdown.Pause(DateTimeOffset.UtcNow);
+        _countdownText.Text = FormatTime(_countdown.GetRemaining(DateTimeOffset.UtcNow));
+        _countdownTimer.Stop();
+    }
+
+    public void ResumeCountdown()
+    {
+        if (_countdownTimer is null || _countdown is null || !_countdown.IsPaused)
+        {
+            return;
+        }
+
+        _countdown.Resume(DateTimeOffset.UtcNow);
+        _countdownTimer.Start();
     }
 
     public void CloseForAppControl()

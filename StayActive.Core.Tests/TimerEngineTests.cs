@@ -188,4 +188,21 @@ public class TimerEngineTests
         Assert.Equal(Start + TimeSpan.FromMinutes(65), snapshots[ReminderKind.Water].NextDueUtc);
         Assert.Equal(Start + TimeSpan.FromMinutes(85), snapshots[ReminderKind.Walking].NextDueUtc);
     }
+
+    [Fact]
+    public void PausableCountdown_PreservesRemainingWalkTimeAcrossRepeatedSystemLocks()
+    {
+        var countdown = new PausableCountdown(TimeSpan.FromMinutes(2), Start);
+        countdown.Pause(Start + TimeSpan.FromSeconds(70));
+        var firstRemainder = countdown.GetRemaining(Start + TimeSpan.FromSeconds(70));
+        Assert.Equal(TimeSpan.FromSeconds(50), firstRemainder);
+
+        countdown.Resume(Start + TimeSpan.FromMinutes(8));
+        countdown.Pause(Start + TimeSpan.FromMinutes(8) + TimeSpan.FromSeconds(15));
+        Assert.Equal(TimeSpan.FromSeconds(35), countdown.GetRemaining(Start + TimeSpan.FromMinutes(8) + TimeSpan.FromSeconds(15)));
+        countdown.Resume(Start + TimeSpan.FromMinutes(25));
+
+        Assert.Equal(TimeSpan.FromSeconds(35), countdown.GetRemaining(Start + TimeSpan.FromMinutes(25)));
+        Assert.Equal(TimeSpan.Zero, countdown.GetRemaining(Start + TimeSpan.FromMinutes(25) + TimeSpan.FromSeconds(35)));
+    }
 }

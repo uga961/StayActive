@@ -24,7 +24,7 @@ Windows startup is optional and off by default. Enable it in Settings to registe
 
 Windows session lock/unlock and power suspend/resume notifications pause and resume timers through event-driven handlers. StayActive also registers for the native lid-switch notification, so a lid-close event pauses timers even on systems configured not to sleep when the lid is shut.
 
-Meeting detection is a best-effort local check: every three seconds, and immediately before an overlay pauses media, StayActive checks active microphone-capture audio sessions and matches their process to common meeting clients and browsers. Browser microphone use for non-meeting purposes may also pause eye/walk timers. No audio is recorded. Media pausing requires the player to publish a Windows system media session; apps with raw audio output but no media controls may not respond. StayActive resumes only sessions it observed playing and successfully paused. Recognized conferencing-app/browser media is left running while a call is detected.
+Meeting detection is a best-effort local check: every three seconds, and immediately before an overlay pauses media, StayActive checks active microphone-capture audio sessions and matches their process to common meeting clients and browsers. Browser microphone use for non-meeting purposes may also pause eye/walk timers. No audio is recorded. Media pausing uses Windows system media sessions; VLC also has a targeted Space-key fallback when its active audio session is not exposed to Windows media controls. Apps with raw audio output but no media controls or controllable window may not respond. StayActive resumes only sessions it observed playing and successfully paused. Recognized conferencing-app/browser media is left running while a call is detected.
 
 The **Appearance** setting has three options: **System** follows the Windows app-theme preference, while **Light** and **Dark** select a fixed palette. Changes are saved and transition with a brief fade.
 
@@ -46,7 +46,7 @@ dotnet run --project StayActive/StayActive.csproj
 
 The main window's close command is disabled; minimize hides StayActive to the tray, and maximize/restore remains available. Use the tray menu's Exit command to stop the application. Right-click the tray icon for Open, Pause/Resume, Settings, Create desktop shortcut, and Exit. The dashboard clock displays elapsed time since StayActive launched as `HH:mm:ss`.
 
-The v2.1 release pauses the session clock and reminder timers on Windows session lock, system suspend, and lid-close power notifications. It resumes only when the session is unlocked, the system has resumed, and the lid is open. Windows power settings may determine whether a closed lid suspends the PC; StayActive also listens for the lid-switch state directly.
+The v2.1 release pauses the session clock and reminder timers on Windows session lock, system suspend, and lid-close power notifications. An active reminder overlay is hidden and its remaining countdown is preserved; it does not restart from the full interval after unlock. It resumes only when the session is unlocked, the system has resumed, and the lid is open. Windows power settings may determine whether a closed lid suspends the PC; StayActive also listens for the lid-switch state directly.
 
 The Release executable is published ReadyToRun to reduce JIT work at startup. First-use extraction can take longer than subsequent launches.
 
