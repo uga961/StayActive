@@ -153,18 +153,23 @@ public partial class MainWindow : Window
         PlayGlassesAnimation();
     }
 
-    private void ConfirmGlassesAndMinimize()
+    private void ConfirmGlassesAndShowDashboard()
     {
+        if (_glassesConfirmed)
+        {
+            return;
+        }
+
         _glassesConfirmed = true;
         _glassesCheckSkipped = false;
         GlassesStatusText.Text = "Confirmed for this session";
         GlassesPromptView.Visibility = Visibility.Collapsed;
         Topmost = false;
-        HideToTray();
+        OpenDashboard();
         ShowNextReminder();
     }
 
-    private void ConfirmGlassesButton_Click(object sender, RoutedEventArgs e) => ConfirmGlassesAndMinimize();
+    private void ConfirmGlassesButton_Click(object sender, RoutedEventArgs e) => ConfirmGlassesAndShowDashboard();
 
     private void PlayGlassesAnimation()
     {

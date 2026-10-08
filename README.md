@@ -30,7 +30,7 @@ The **Appearance** setting has three options: **System** follows the Windows app
 
 ## Start-Up Glasses Check
 
-On launch, StayActive displays a full-screen glasses reminder with a brief animation. Click **I'm wearing my glasses** to confirm; StayActive then minimizes to the system tray and starts its reminders. This is a manual reminder, not computer vision or a verification system. The tray menu can pause the app for an exam; setting startup to paused skips the prompt.
+On launch, StayActive displays a full-screen glasses reminder with a brief animation. Click **I'm wearing my glasses** to confirm and open the dashboard. Minimize the dashboard to send StayActive to the system tray. This is a manual reminder, not computer vision or a verification system. The tray menu can pause the app for an exam; setting startup to paused skips the prompt.
 
 Walking reminders intentionally do not use a camera: they block the screen for the configured 2- or 3-minute countdown. StayActive does not open the camera, collect images, or process face data.
 

@@ -186,7 +186,7 @@
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="680" Margin="32">
                     <TextBlock Text="A QUICK START CHECK" FontSize="15" FontWeight="SemiBold" Foreground="#B4DAC7" HorizontalAlignment="Center" />
                     <TextBlock Text="Put on your computer glasses" FontSize="38" FontWeight="SemiBold" Foreground="White" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
-                    <TextBlock Text="When you're ready, confirm below. StayActive will continue quietly in the tray." FontSize="18" Foreground="#DBE9E2" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
+                    <TextBlock Text="When you're ready, confirm below to open your dashboard. Minimize the window to send StayActive to the tray." FontSize="18" Foreground="#DBE9E2" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
                     <Canvas Width="240" Height="200" HorizontalAlignment="Center" Margin="0,12,0,0">
                         <Ellipse Width="142" Height="168" Fill="#E1BE97" Stroke="#F8DEBC" StrokeThickness="3" Canvas.Left="49" Canvas.Top="17" />
                         <Ellipse Width="8" Height="6" Fill="#474335" Canvas.Left="84" Canvas.Top="86" />
